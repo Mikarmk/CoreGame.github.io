@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Walking Character Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        h1 {
+            color: #9b59b6;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            font-size: 32px;
+        }
+
+        .game-container {
+            position: relative;
+            width: 1028px;
+            height: 508px;
+            background: #f0f0f0;
+            border: none;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(155, 89, 182, 0.4);
+        }
+
+        .room {
+            width: 100%;
+            height: 100%;
+            background-image: url('back.svg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            position: relative;
+        }
+
+        .core {
+            position: absolute;
+            top: 30%;
+            left: 50%;
+            width: 30%;
+            height: 30%;
+            background-image: url('ядро.svg');
+            background-size: contain;
+            background-position: center;
+            background-repeat: no-repeat;
+            animation: coreAnimation 4s infinite linear;
+            z-index: 1;
+            transform-origin: center;
+            transform: translateX(-50%);
+        }
+
+        @keyframes coreAnimation {
+            0% {
+                transform: translateX(-50%) rotate(0deg) scale(1);
+            }
+            25% {
+                transform: translateX(-50%) rotate(90deg) scale(1.05);
+            }
+            50% {
+                transform: translateX(-50%) rotate(180deg) scale(1);
+            }
+            75% {
+                transform: translateX(-50%) rotate(270deg) scale(0.95);
+            }
+            100% {
+                transform: translateX(-50%) rotate(360deg) scale(1);
+            }
+        }
+
+        .front {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('Fornt.svg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            z-index: 999;
+            pointer-events: none;
+        }
+
+        .character {
+            position: absolute;
+            width: 160px;
+            height: 160px;
+            transition: none;
+            z-index: 50;
+        }
+
+        .character img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .controls {
+            margin-top: 20px;
+            color: #333;
+            text-align: center;
+        }
+
+        .controls p {
+            margin: 5px 0;
+            font-size: 16px;
+        }
+
+        .speed-control {
+            margin-top: 15px;
+        }
+
+        .speed-control label {
+            color: #333;
+            margin-right: 10px;
+        }
+
+        .speed-control span {
+            color: #333;
+        }
+
+        .speed-control input {
+            width: 100px;
+        }
+
+        .bullet {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background-image: url('пулька.svg');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            z-index: 5;
+        }
+
+        .virus {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            background-image: url('вирус.svg');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            z-index: 10;
+            transition: none;
+        }
+
+        .game-info {
+            margin-top: 15px;
+            color: #333;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .score {
+            color: #27ae60;
+        }
+
+        .health {
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+    <h1>Защита Ядра от Вирусов</h1>
+    
+    <div class="game-container">
+        <div class="room">
+            <div class="core"></div>
+            <div class="character" id="character">
+                <img src="go.svg" alt="Character" id="characterSprite">
+            </div>
+            <div class="front"></div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <p><strong>Управление:</strong></p>
+        <p>Используйте клавиши A/D или стрелки для движения персонажа</p>
+        <p>A/← - Влево | D/→ - Вправо | W/↑ - Прыжок | Пробел - Стрельба</p>
+    </div>
+
+    <div class="game-info">
+        <div class="score">Счет: <span id="score">0</span></div>
+        <div class="health">Здоровье ядра: <span id="coreHealth">100</span></div>
+    </div>
+
+    <script>
+        class WalkingGame {
+            constructor() {
+                this.character = document.getElementById('character');
+                this.characterSprite = document.getElementById('characterSprite');
+                this.gameContainer = document.querySelector('.game-container');
+                
+                // Character position
+                this.x = 434; // Center horizontally (1028/2 - 80)
+                this.y = 298; // Slightly higher position (508 - 160 - 50)
+                
+                // Movement settings
+                this.speed = 6;
+                this.isMoving = false;
+                this.direction = 'idle';
+                this.facingLeft = false;
+                this.isJumping = false;
+                this.jumpStartY = this.y;
+                this.jumpPhase = 'none'; // 'none', 'crouch', 'air'
+                this.jumpTimer = 0;
+                this.bullets = [];
+                this.bulletSpeed = 8;
+                this.lastShootTime = 0;
+                this.shootCooldown = 500; // milliseconds between shots (реже стрельба)
+                
+                // Virus system
+                this.viruses = [];
+                this.virusSpeed = 2;
+                this.virusSpawnRate = 2000; // milliseconds between virus spawns
+                this.lastVirusSpawn = 0;
+                this.score = 0;
+                this.coreHealth = 100;
+                this.gameOver = false;
+                
+                // Spawn points for viruses (только по горизонтали, ниже)
+                this.spawnPoints = [
+                    { x: -40, y: 300 },   // Left middle
+                    { x: 1028, y: 300 }   // Right middle
+                ];
+                
+                // Core center position for virus targeting (только по X)
+                this.coreCenter = { x: 514, y: 300 }; // Center horizontally, same Y as viruses
+                
+                // Animation settings
+                this.walkFrame = 1;
+                this.animationTimer = 0;
+                this.animationSpeed = 5; // frames between sprite changes (2x faster)
+                
+                // Pressed keys
+                this.keys = {};
+                
+                // Boundaries
+                this.bounds = {
+                    left: 50, // Left margin
+                    right: 818, // 1028 - 160 (character width) - 50 (right margin)
+                    top: 298, // Fixed Y position (slightly higher)
+                    bottom: 298 // Same as top - no vertical movement
+                };
+                
+                this.init();
+            }
+            
+            init() {
+                this.updatePosition();
+                this.setupEventListeners();
+                this.gameLoop();
+            }
+            
+            setupEventListeners() {
+                // Keyboard events
+                document.addEventListener('keydown', (e) => {
+                    this.keys[e.code] = true;
+                    e.preventDefault();
+                });
+                
+                document.addEventListener('keyup', (e) => {
+                    this.keys[e.code] = false;
+                    e.preventDefault();
+                });
+                
+            }
+            
+            handleInput() {
+                let newX = this.x;
+                let moving = false;
+                
+                // Check jump key
+                if ((this.keys['KeyW'] || this.keys['ArrowUp']) && !this.isJumping) {
+                    this.startJump();
+                }
+                
+                // Check shoot key
+                if (this.keys['Space']) {
+                    const currentTime = Date.now();
+                    if (currentTime - this.lastShootTime > this.shootCooldown) {
+                        this.shoot();
+                        this.lastShootTime = currentTime;
+                    }
+                }
+                
+                // Check movement keys (horizontal movement allowed during jump)
+                if (this.keys['KeyA'] || this.keys['ArrowLeft']) {
+                    newX -= this.speed;
+                    moving = true;
+                    this.facingLeft = true;
+                }
+                if (this.keys['KeyD'] || this.keys['ArrowRight']) {
+                    newX += this.speed;
+                    moving = true;
+                    this.facingLeft = false;
+                }
+                
+                // Apply horizontal boundaries
+                newX = Math.max(this.bounds.left, Math.min(this.bounds.right, newX));
+                
+                // Update position if changed
+                if (newX !== this.x) {
+                    this.x = newX;
+                    this.updatePosition();
+                }
+                
+                // Only set isMoving if not jumping (for walking animation)
+                if (!this.isJumping) {
+                    this.isMoving = moving;
+                } else {
+                    this.isMoving = false; // Don't show walking animation during jump
+                }
+            }
+            
+            shoot() {
+                const bullet = {
+                    x: this.x + 80, // Center of character
+                    y: this.y + 40, // Higher position on character
+                    direction: this.facingLeft ? -1 : 1,
+                    element: document.createElement('div')
+                };
+                
+                bullet.element.className = 'bullet';
+                bullet.element.style.left = bullet.x + 'px';
+                bullet.element.style.top = bullet.y + 'px';
+                
+                this.gameContainer.appendChild(bullet.element);
+                this.bullets.push(bullet);
+            }
+            
+            updateBullets() {
+                for (let i = this.bullets.length - 1; i >= 0; i--) {
+                    const bullet = this.bullets[i];
+                    bullet.x += this.bulletSpeed * bullet.direction;
+                    
+                    bullet.element.style.left = bullet.x + 'px';
+                    
+                    // Check collision with viruses
+                    for (let j = this.viruses.length - 1; j >= 0; j--) {
+                        const virus = this.viruses[j];
+                        const dx = bullet.x - virus.x;
+                        const dy = bullet.y - virus.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (distance < 30) { // Collision detected
+                            // Remove bullet and virus
+                            bullet.element.remove();
+                            virus.element.remove();
+                            this.bullets.splice(i, 1);
+                            this.viruses.splice(j, 1);
+                            
+                            // Increase score
+                            this.score += 10;
+                            this.updateScore();
+                            break;
+                        }
+                    }
+                    
+                    // Remove bullet if it goes off screen
+                    if (bullet.x < -10 || bullet.x > 1040) {
+                        bullet.element.remove();
+                        this.bullets.splice(i, 1);
+                    }
+                }
+            }
+            
+            spawnVirus() {
+                if (this.gameOver) return;
+                
+                const currentTime = Date.now();
+                if (currentTime - this.lastVirusSpawn > this.virusSpawnRate) {
+                    const spawnPoint = this.spawnPoints[Math.floor(Math.random() * this.spawnPoints.length)];
+                    
+                    const virus = {
+                        x: spawnPoint.x,
+                        y: spawnPoint.y,
+                        element: document.createElement('div')
+                    };
+                    
+                    virus.element.className = 'virus';
+                    virus.element.style.left = virus.x + 'px';
+                    virus.element.style.top = virus.y + 'px';
+                    
+                    this.gameContainer.appendChild(virus.element);
+                    this.viruses.push(virus);
+                    
+                    this.lastVirusSpawn = currentTime;
+                }
+            }
+            
+            updateViruses() {
+                for (let i = this.viruses.length - 1; i >= 0; i--) {
+                    const virus = this.viruses[i];
+                    
+                    // Calculate direction to core center (только по горизонтали)
+                    const dx = this.coreCenter.x - virus.x;
+                    const distance = Math.abs(dx);
+                    
+                    if (distance > 5) {
+                        // Move virus towards core only horizontally
+                        const moveX = dx > 0 ? this.virusSpeed : -this.virusSpeed;
+                        
+                        virus.x += moveX;
+                        // Y остается неизменным - только горизонтальное движение
+                        
+                        virus.element.style.left = virus.x + 'px';
+                        virus.element.style.top = virus.y + 'px';
+                    } else {
+                        // Virus reached the core
+                        virus.element.remove();
+                        this.viruses.splice(i, 1);
+                        
+                        // Damage core
+                        this.coreHealth -= 10;
+                        this.updateCoreHealth();
+                        
+                        if (this.coreHealth <= 0) {
+                            this.gameOver = true;
+                            this.showGameOver();
+                        }
+                    }
+                }
+            }
+            
+            updateScore() {
+                document.getElementById('score').textContent = this.score;
+            }
+            
+            updateCoreHealth() {
+                document.getElementById('coreHealth').textContent = this.coreHealth;
+            }
+            
+            showGameOver() {
+                alert(`Игра окончена! Ваш счет: ${this.score}`);
+                // Reset game
+                this.resetGame();
+            }
+            
+            resetGame() {
+                // Remove all viruses and bullets
+                this.viruses.forEach(virus => virus.element.remove());
+                this.bullets.forEach(bullet => bullet.element.remove());
+                this.viruses = [];
+                this.bullets = [];
+                
+                // Reset game state
+                this.score = 0;
+                this.coreHealth = 100;
+                this.gameOver = false;
+                this.lastVirusSpawn = 0;
+                
+                // Update UI
+                this.updateScore();
+                this.updateCoreHealth();
+            }
+            
+            startJump() {
+                this.isJumping = true;
+                this.jumpPhase = 'crouch';
+                this.jumpTimer = 0;
+                this.jumpStartY = this.y;
+            }
+            
+            updateJump() {
+                if (!this.isJumping) return;
+                
+                this.jumpTimer += 16.67; // ~60fps
+                
+                if (this.jumpPhase === 'crouch') {
+                    // Crouch phase - 0.025 seconds (25ms)
+                    if (this.jumpTimer >= 25) {
+                        this.jumpPhase = 'air';
+                        this.jumpTimer = 0;
+                    }
+                } else if (this.jumpPhase === 'air') {
+                    // Air phase - 0.5 seconds (500ms)
+                    const jumpProgress = this.jumpTimer / 500;
+                    
+                    if (jumpProgress <= 1) {
+                        // Parabolic jump motion
+                        const jumpHeight = 100; // pixels
+                        const currentHeight = jumpHeight * Math.sin(jumpProgress * Math.PI);
+                        this.y = this.jumpStartY - currentHeight;
+                        this.updatePosition();
+                    } else {
+                        // Jump finished
+                        this.y = this.jumpStartY;
+                        this.updatePosition();
+                        this.isJumping = false;
+                        this.jumpPhase = 'none';
+                        this.jumpTimer = 0;
+                    }
+                }
+            }
+            
+            updateAnimation() {
+                // Update sprite direction
+                if (this.facingLeft) {
+                    this.characterSprite.style.transform = 'scaleX(-1)';
+                } else {
+                    this.characterSprite.style.transform = 'scaleX(1)';
+                }
+                
+                // Jump animation takes priority
+                if (this.isJumping) {
+                    if (this.jumpPhase === 'crouch') {
+                        this.characterSprite.src = 'j1.svg';
+                    } else if (this.jumpPhase === 'air') {
+                        this.characterSprite.src = 'j2.svg';
+                    }
+                } else if (this.isMoving) {
+                    this.animationTimer++;
+                    
+                    if (this.animationTimer >= this.animationSpeed) {
+                        this.animationTimer = 0;
+                        this.walkFrame = this.walkFrame === 1 ? 2 : 1;
+                        
+                        // Switch between walking sprites
+                        if (this.walkFrame === 1) {
+                            this.characterSprite.src = 'go.svg';
+                        } else {
+                            this.characterSprite.src = 'go2.svg';
+                        }
+                    }
+                } else {
+                    // Character is idle
+                    this.characterSprite.src = 'go.svg';
+                    this.animationTimer = 0;
+                    this.walkFrame = 1;
+                }
+            }
+            
+            updatePosition() {
+                this.character.style.left = this.x + 'px';
+                this.character.style.top = this.y + 'px';
+            }
+            
+            gameLoop() {
+                if (!this.gameOver) {
+                    this.handleInput();
+                    this.updateJump();
+                    this.updateBullets();
+                    this.spawnVirus();
+                    this.updateViruses();
+                    this.updateAnimation();
+                }
+                
+                requestAnimationFrame(() => this.gameLoop());
+            }
+        }
+        
+        // Start the game when page loads
+        window.addEventListener('load', () => {
+            new WalkingGame();
+        });
+    </script>
+</body>
+</html>
